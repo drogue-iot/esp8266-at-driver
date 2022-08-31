@@ -64,12 +64,6 @@ impl SocketPool {
         }
     }
 
-    pub(crate) fn is_closed<'a>(&'a self, socket: u8) -> bool {
-        let sockets = self.sockets.borrow();
-        let index = socket as usize;
-        sockets[index] == SocketState::Closed || sockets[index] == SocketState::HalfClosed
-    }
-
     fn poll_open(&self, waker: &Waker, waiting: bool) -> Poll<Result<u8, ()>> {
         let mut sockets = self.sockets.borrow_mut();
         let available = sockets

@@ -1,22 +1,24 @@
 #![feature(type_alias_impl_trait)]
 #![feature(generic_associated_types)]
+#![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 mod fmt;
 mod parser;
 mod socket_pool;
 
 use socket_pool::SocketPool;
 
-use embedded_hal::digital::blocking::{OutputPin, InputPin};
+use embedded_hal::digital::blocking::{InputPin, OutputPin};
 
 use core::fmt::Debug;
 use core::fmt::Write as FmtWrite;
 use core::future::Future;
 use core::marker::PhantomData;
-use embassy_time::{block_for, with_timeout, Duration, Timer};
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     channel::{Channel, DynamicSender},
 };
+use embassy_time::{block_for, with_timeout, Duration, Timer};
 use embedded_hal_async::digital::Wait;
 use embedded_hal_async::spi::*;
 use embedded_nal_async::*;
@@ -28,7 +30,7 @@ type DriverMutex = NoopRawMutex;
 
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum TcpError {
+pub enum SocketError {
     OpenError,
     ConnectError,
     ReadError,
@@ -57,7 +59,7 @@ pub enum Error<SPI, CS, RESET, READY> {
     SPI(SPI),
     READY(READY),
     Transmitting,
-    Tcp(TcpError),
+    Socket(SocketError),
     Join(JoinError),
 }
 
@@ -146,15 +148,6 @@ where
         &mut self,
     ) -> Result<(), Error<SPI::Error, CS::Error, RESET::Error, READY::Error>> {
         while self.ready.is_low().map_err(Error::READY)? {
-            self.ready.wait_for_any_edge().await.map_err(Error::READY)?;
-        }
-        Ok(())
-    }
-
-    async fn wait_not_ready(
-        &mut self,
-    ) -> Result<(), Error<SPI::Error, CS::Error, RESET::Error, READY::Error>> {
-        while self.ready.is_high().map_err(Error::READY)? {
             self.ready.wait_for_any_edge().await.map_err(Error::READY)?;
         }
         Ok(())
@@ -347,28 +340,28 @@ where
         Ok(&response[0..pos])
     }
 
-    async fn socket(&mut self) -> Result<u8, TcpError> {
+    async fn socket(&mut self) -> Result<u8, SocketError> {
         let h = self
             .socket_pool
             .open()
             .await
-            .map_err(|_| TcpError::OpenError)?;
+            .map_err(|_| SocketError::OpenError)?;
         trace!("Opened socket {}", h);
         Ok(h)
     }
 
-    fn is_connected(&mut self, handle: u8) -> Result<bool, TcpError> {
+    fn is_connected(&mut self, handle: u8) -> Result<bool, SocketError> {
         Ok(self.socket_pool.is_connected(handle))
     }
 
-    async fn connect(&mut self, handle: u8, remote: SocketAddr) -> Result<(), TcpError> {
+    async fn connect(&mut self, handle: u8, remote: SocketAddr) -> Result<(), SocketError> {
         let mut response = [0u8; 1024];
         let result = async {
             self.send_string(command!(8, "P0={}", handle), &mut response)
                 .await
                 .map_err(|_| {
                     trace!("[{}] CONNECT 1", handle);
-                    TcpError::ConnectError
+                    SocketError::ConnectError
                 })?;
 
             self.send_string(command!(8, "P1=0"), &mut response)
@@ -376,13 +369,13 @@ where
                 .map_err(|_| {
                     trace!("[{}] CONNECT 2", handle);
 
-                    TcpError::ConnectError
+                    SocketError::ConnectError
                 })?;
             /*
             IpProtocol::Udp => {
                 self.send_string(command!(8, "P1=1"), &mut response)
                     .await
-                    .map_err(|_| TcpError::ConnectError)?;
+                    .map_err(|_| SocketError::ConnectError)?;
             }
             */
 
@@ -390,14 +383,14 @@ where
                 .await
                 .map_err(|_| {
                     trace!("[{}] CONNECT 3", handle);
-                    TcpError::ConnectError
+                    SocketError::ConnectError
                 })?;
 
             self.send_string(command!(32, "P4={}", remote.port()), &mut response)
                 .await
                 .map_err(|_| {
                     trace!("[{}] CONNECT 4", handle);
-                    TcpError::ConnectError
+                    SocketError::ConnectError
                 })?;
 
             let response = self
@@ -405,7 +398,7 @@ where
                 .await
                 .map_err(|_| {
                     trace!("[{}] CONNECT 5", handle);
-                    TcpError::ConnectError
+                    SocketError::ConnectError
                 })?;
 
             match parser::connect_response(&response) {
@@ -415,11 +408,11 @@ where
                 }
                 Ok((_, _)) => {
                     trace!("[{}] CONNECT 6", handle);
-                    Err(TcpError::ConnectError)
+                    Err(SocketError::ConnectError)
                 }
                 Err(_) => {
                     trace!("[{}] CONNECT 7", handle);
-                    Err(TcpError::ConnectError)
+                    Err(SocketError::ConnectError)
                 }
             }
         }
@@ -427,13 +420,13 @@ where
         result
     }
 
-    async fn write(&mut self, handle: u8, buf: &[u8]) -> Result<usize, TcpError> {
+    async fn write(&mut self, handle: u8, buf: &[u8]) -> Result<usize, SocketError> {
         let mut response = [0u8; 32];
         let mut remaining = buf.len();
         trace!("Write request with {} bytes", remaining);
         self.send_string(command!(8, "P0={}", handle), &mut response)
             .await
-            .map_err(|_| TcpError::WriteError)?;
+            .map_err(|_| SocketError::WriteError)?;
         while remaining > 0 {
             // info!("Writing buf with len {}", len);
 
@@ -450,10 +443,12 @@ where
                     (&prefix[..], &buf[1..to_send])
                 };
 
-                self.wait_ready().await.map_err(|_| TcpError::WriteError)?;
+                self.wait_ready()
+                    .await
+                    .map_err(|_| SocketError::WriteError)?;
 
                 {
-                    let _cs = Cs::new(&mut self.cs).map_err(|_| TcpError::WriteError)?;
+                    let _cs = Cs::new(&mut self.cs).map_err(|_| SocketError::WriteError)?;
 
                     trace!("Writing prefix of {} bytes", prefix.len());
                     for chunk in prefix.chunks(2) {
@@ -470,7 +465,7 @@ where
 
                         Self::spi_transfer(&mut self.spi, &mut xfer, &[a, b])
                             .await
-                            .map_err(|_| TcpError::WriteError)?;
+                            .map_err(|_| SocketError::WriteError)?;
                     }
 
                     trace!("Writing data of {} bytes", data.len());
@@ -488,14 +483,14 @@ where
 
                         Self::spi_transfer(&mut self.spi, &mut xfer, &[a, b])
                             .await
-                            .map_err(|_| TcpError::WriteError)?;
+                            .map_err(|_| SocketError::WriteError)?;
                     }
                 }
 
                 let response = self
                     .receive(&mut response)
                     .await
-                    .map_err(|_| TcpError::WriteError)?;
+                    .map_err(|_| SocketError::WriteError)?;
 
                 if let Ok((_, WriteResponse::Ok(len))) = parser::write_response(response) {
                     remaining -= to_send;
@@ -503,7 +498,7 @@ where
                 } else {
                     trace!("Error reading response");
                     trace!("response:  {:?}", core::str::from_utf8(&response).unwrap());
-                    Err(TcpError::WriteError)
+                    Err(SocketError::WriteError)
                 }
             }
             .await?;
@@ -511,7 +506,7 @@ where
         Ok(buf.len())
     }
 
-    async fn read(&mut self, handle: u8, buf: &mut [u8]) -> Result<usize, TcpError> {
+    async fn read(&mut self, handle: u8, buf: &mut [u8]) -> Result<usize, SocketError> {
         let mut pos = 0;
         //let buf_len = buf.len();
         loop {
@@ -522,7 +517,7 @@ where
                     .await
                     .map_err(|_| {
                         debug!("[{}] READ 1", handle);
-                        TcpError::ReadError
+                        SocketError::ReadError
                     })?;
 
                 let maxlen = buf.len() - pos;
@@ -532,31 +527,31 @@ where
                     .await
                     .map_err(|_| {
                         debug!("[{}] READ 2", handle);
-                        TcpError::ReadError
+                        SocketError::ReadError
                     })?;
 
                 /*
                 self.send_string(&command!(8, "R2=10000"), &mut response)
                     .await
-                    .map_err(|_| TcpError::ReadError)?;
+                    .map_err(|_| SocketError::ReadError)?;
                 */
 
                 self.send_string(command!(8, "R3=1"), &mut response)
                     .await
                     .map_err(|_| {
                         debug!("[{}] READ 3", handle);
-                        TcpError::ReadError
+                        SocketError::ReadError
                     })?;
 
                 self.wait_ready().await.map_err(|_| {
                     debug!("[{}] READ 4", handle);
-                    TcpError::ReadError
+                    SocketError::ReadError
                 })?;
 
                 {
                     let _cs = Cs::new(&mut self.cs).map_err(|_| {
                         debug!("[{}] READ 5", handle);
-                        TcpError::ReadError
+                        SocketError::ReadError
                     })?;
 
                     let mut xfer = [b'0', b'R'];
@@ -564,7 +559,7 @@ where
                         .await
                         .map_err(|_| {
                             debug!("[{}] READ 6", handle);
-                            TcpError::ReadError
+                            SocketError::ReadError
                         })?;
 
                     xfer = [b'\n', b'\r'];
@@ -572,7 +567,7 @@ where
                         .await
                         .map_err(|_| {
                             debug!("[{}] READ 7", handle);
-                            TcpError::ReadError
+                            SocketError::ReadError
                         })?;
                 }
 
@@ -584,7 +579,7 @@ where
                 );
                 let response = self.receive(&mut response).await.map_err(|_| {
                     debug!("[{}] READ 8", handle);
-                    TcpError::ReadError
+                    SocketError::ReadError
                 })?;
 
                 trace!("Response is {} bytes", response.len());
@@ -604,7 +599,7 @@ where
                                 trace!("response parsed:  {:?}", s);
                             }
                             trace!("response raw data: {:?}", response);
-                            Err(TcpError::ReadError)
+                            Err(SocketError::ReadError)
                         } else {
                             for (i, b) in data.iter().enumerate() {
                                 buf[pos + i] = *b;
@@ -616,7 +611,7 @@ where
                     Ok((_, ReadResponse::Err)) => {
                         trace!("[{}] READ 9 ReadResponse::Err", handle);
                         //      warn!("response raw data: {:02x}", response);
-                        Err(TcpError::ReadError)
+                        Err(SocketError::ReadError)
                     }
                     _ => {
                         warn!("[{}] READ 9 parse error", handle);
@@ -624,7 +619,7 @@ where
                             trace!("response parsed:  {:?}", s);
                         }
                         trace!("response raw data: {:?}", response);
-                        Err(TcpError::ReadError)
+                        Err(SocketError::ReadError)
                     }
                 }
             }
@@ -648,7 +643,7 @@ where
         }
     }
 
-    async fn close(&mut self, handle: u8) -> Result<(), TcpError> {
+    async fn close(&mut self, handle: u8) -> Result<(), SocketError> {
         trace!("Closing connection for {}", handle);
         self.socket_pool.close(handle);
         let mut response = [0u8; 32];
@@ -657,7 +652,7 @@ where
             .await
             .map_err(|_| {
                 debug!("[{}] CLOSE 1", handle);
-                TcpError::CloseError
+                SocketError::CloseError
             })?;
 
         let response = self
@@ -665,7 +660,7 @@ where
             .await
             .map_err(|_| {
                 debug!("[{}] CLOSE 2", handle);
-                TcpError::CloseError
+                SocketError::CloseError
             })?;
 
         match parser::close_response(&response) {
@@ -682,7 +677,7 @@ where
                     core::str::from_utf8(&response).unwrap()
                 );*/
                 self.socket_pool.close(handle);
-                Err(TcpError::CloseError)
+                Err(SocketError::CloseError)
             }
             Err(_) => {
                 debug!("[{}] Error2 closing connection", handle);
@@ -691,7 +686,7 @@ where
                     debug!("response parsed:  {:?}", s);
                 }
                 self.socket_pool.close(handle);
-                Err(TcpError::CloseError)
+                Err(SocketError::CloseError)
             }
         }
     }
@@ -728,7 +723,7 @@ where
 
     async fn new_socket(
         &'a self,
-    ) -> Result<EsWifiSocket<'a, SPI, CS, RESET, WAKEUP, READY>, TcpError> {
+    ) -> Result<EsWifiSocket<'a, SPI, CS, RESET, WAKEUP, READY>, SocketError> {
         let mut adapter = self.adapter.lock().await;
         let handle = adapter.socket().await?;
         Ok(EsWifiSocket {
@@ -817,10 +812,10 @@ where
     WAKEUP: OutputPin + 'static,
     READY: InputPin + Wait + 'static,
 {
-    type Error = TcpError;
+    type Error = SocketError;
 }
 
-impl embedded_io::Error for TcpError {
+impl embedded_io::Error for SocketError {
     fn kind(&self) -> embedded_io::ErrorKind {
         embedded_io::ErrorKind::Other
     }
@@ -835,7 +830,7 @@ where
     WAKEUP: OutputPin + 'static,
     READY: InputPin + Wait + 'static,
 {
-    type Error = TcpError;
+    type Error = SocketError;
     type Connection<'m> = EsWifiSocket<'m, SPI, CS, RESET, WAKEUP, READY> where Self: 'm;
     type ConnectFuture<'m> = impl Future<Output = Result<Self::Connection<'m>, Self::Error>> + 'm
 	where
@@ -858,7 +853,7 @@ where
     WAKEUP: OutputPin + 'static,
     READY: InputPin + Wait + 'static,
 {
-    async fn connect(&mut self, remote: SocketAddr) -> Result<(), TcpError> {
+    async fn connect(&mut self, remote: SocketAddr) -> Result<(), SocketError> {
         let mut adapter = self.adapter.adapter.lock().await;
 
         if adapter.is_connected(self.handle)? {
@@ -867,7 +862,7 @@ where
 
         match with_timeout(self.connect_timeout, adapter.connect(self.handle, remote)).await {
             Ok(r) => r,
-            Err(_) => Err(TcpError::ConnectError),
+            Err(_) => Err(SocketError::ConnectError),
         }
     }
 }
