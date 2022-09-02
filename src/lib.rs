@@ -76,7 +76,7 @@ macro_rules! command {
     })
 }
 
-pub struct Cs<'a, CS: OutputPin + 'a> {
+struct Cs<'a, CS: OutputPin + 'a> {
     cs: &'a mut CS,
 }
 
@@ -95,6 +95,7 @@ impl<'a, CS: OutputPin + 'a> Drop for Cs<'a, CS> {
     }
 }
 
+/// Es-WiFi driver state
 pub struct EsWifi<SPI, CS, RESET, WAKEUP, READY>
 where
     SPI: SpiBus<u8>,
@@ -119,6 +120,7 @@ where
     WAKEUP: OutputPin + 'static,
     READY: InputPin + Wait + 'static,
 {
+    /// Create a new instance of the es-wifi driver using the provided peripheral and pins.
     pub fn new(spi: SPI, cs: CS, reset: RESET, wakeup: WAKEUP, ready: READY) -> Self {
         Self {
             spi,
@@ -153,7 +155,7 @@ where
         Ok(())
     }
 
-    pub async fn start(
+    async fn start(
         &mut self,
     ) -> Result<(), Error<SPI::Error, CS::Error, RESET::Error, READY::Error>> {
         info!("Starting eS-WiFi adapter!");
@@ -209,7 +211,7 @@ where
         Ok(())
     }
 
-    pub async fn join_wep(&mut self, ssid: &str, password: &str) -> Result<IpAddr, JoinError> {
+    async fn join_wep(&mut self, ssid: &str, password: &str) -> Result<IpAddr, JoinError> {
         let mut response = [0; 1024];
 
         self.send_string(command!(36, "CB=2"), &mut response)
