@@ -111,23 +111,3 @@ impl<'a> Future for OpenFuture<'a> {
         result
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use futures::executor::block_on;
-
-    #[test]
-    fn max_simultaneous_sockets() {
-        let pool = SocketPool::new();
-        for i in 0..100 {
-            let expected = i % 4;
-            if !pool.is_closed(expected) {
-                pool.close(expected);
-                pool.close(expected); // account for HalfClosed state
-            }
-            let actual = block_on(pool.open());
-            assert_eq!(expected, actual.unwrap());
-        }
-    }
-}
