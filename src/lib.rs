@@ -27,38 +27,53 @@ use parser::{CloseResponse, ConnectResponse, JoinResponse, ReadResponse, WriteRe
 
 type DriverMutex = NoopRawMutex;
 
+/// Socket error variants
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SocketError {
+    /// Error opening socket
     OpenError,
+    /// Error connecting with socket
     ConnectError,
+    /// Error reading from socket
     ReadError,
+    /// Error writing to socket
     WriteError,
+    /// Error closing socket
     CloseError,
-    IoError,
+    /// Attempting to use closed socket
     SocketClosed,
 }
 
+/// WiFi join errors
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum JoinError {
+    /// Invalid SSID
     InvalidSsid,
+    /// Invalid passkey
     InvalidPassword,
+    /// Unknown error
     Unknown,
+    /// Error associating to AP
     UnableToAssociate,
 }
 
+/// Error type for driver
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error<SPI, CS, RESET, READY> {
-    Uninformative,
-    VersionMismatch(u8),
+    /// Chip select error
     CS(CS),
+    /// Reset pin error
     Reset(RESET),
+    /// SPI error
     SPI(SPI),
+    /// Ready pin error
     READY(READY),
-    Transmitting,
+    /// Socket error
     Socket(SocketError),
+    /// Join error
     Join(JoinError),
 }
 
@@ -693,6 +708,7 @@ where
     }
 }
 
+/// eS-WiFi driver.
 pub struct EsWifi<SPI, CS, RESET, WAKEUP, READY>
 where
     SPI: SpiBus<u8>,
@@ -713,6 +729,7 @@ where
     WAKEUP: OutputPin,
     READY: InputPin + Wait,
 {
+    /// Create a new instance of the driver.
     pub fn new(spi: SPI, cs: CS, reset: RESET, wakeup: WAKEUP, ready: READY) -> Self {
         let state = DriverState::new(spi, cs, reset, wakeup, ready);
         Self {
@@ -727,7 +744,7 @@ where
         Ok(handle)
     }
 
-    pub async fn reset(
+    async fn reset(
         &self,
         ssid: &str,
         psk: &str,
@@ -743,6 +760,7 @@ where
         Ok(())
     }
 
+    /// Run driver stack
     pub async fn run(
         &self,
         ssid: &str,
@@ -782,6 +800,7 @@ where
     }
 }
 
+/// Socket representing a single connection.
 pub struct EsWifiSocket<'a, SPI, CS, RESET, WAKEUP, READY>
 where
     SPI: SpiBus<u8> + 'a,
@@ -929,6 +948,6 @@ where
     }
 }
 
-pub enum Control {
+enum Control {
     Close(u8),
 }
