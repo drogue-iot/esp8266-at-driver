@@ -1,6 +1,6 @@
 # es-wifi-driver
 
-[![CI](https://github.com/drogue-iot/es-wifi-driver/actions/workflows/build.yaml/badge.svg)](https://github.com/drogue-iot/es-wifi-driver/actions/workflows/ci.yaml)
+[![CI](https://github.com/drogue-iot/es-wifi-driver/actions/workflows/ci.yaml/badge.svg)](https://github.com/drogue-iot/es-wifi-driver/actions/workflows/ci.yaml)
 [![crates.io](https://img.shields.io/crates/v/es-wifi-driver.svg)](https://crates.io/crates/es-wifi-driver)
 [![docs.rs](https://docs.rs/es-wifi-driver/badge.svg)](https://docs.rs/es-wifi-driver)
 [![Matrix](https://img.shields.io/matrix/drogue-iot:matrix.org)](https://matrix.to/#/#drogue-iot:matrix.org)
