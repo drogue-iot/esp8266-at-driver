@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std]
 #![feature(type_alias_impl_trait)]
 #![feature(generic_associated_types)]
 #![doc = include_str!("../README.md")]
