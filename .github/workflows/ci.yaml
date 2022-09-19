@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [staging, trying, main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build and test
+        run: cargo test
+
+      - name: Build example
+        run: cd examples/stm32l4-discovery-kit && cargo build
