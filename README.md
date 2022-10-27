@@ -1,11 +1,11 @@
-# es-wifi-driver
+# esp8266-wifi-at
 
-[![CI](https://github.com/drogue-iot/es-wifi-driver/actions/workflows/ci.yaml/badge.svg)](https://github.com/drogue-iot/es-wifi-driver/actions/workflows/ci.yaml)
-[![crates.io](https://img.shields.io/crates/v/es-wifi-driver.svg)](https://crates.io/crates/es-wifi-driver)
-[![docs.rs](https://docs.rs/es-wifi-driver/badge.svg)](https://docs.rs/es-wifi-driver)
+[![CI](https://github.com/drogue-iot/esp8266-wifi-at/actions/workflows/ci.yaml/badge.svg)](https://github.com/drogue-iot/esp8266-wifi-at/actions/workflows/ci.yaml)
+[![crates.io](https://img.shields.io/crates/v/esp8266-wifi-at.svg)](https://crates.io/crates/esp8266-wifi-at)
+[![docs.rs](https://docs.rs/esp8266-wifi-at/badge.svg)](https://docs.rs/esp8266-wifi-at)
 [![Matrix](https://img.shields.io/matrix/drogue-iot:matrix.org)](https://matrix.to/#/#drogue-iot:matrix.org)
 
-Driver for the es-wifi adapter from Inventek. The adapter is used on boards such as [B-L475E-IOT01A](https://www.st.com/en/evaluation-tools/b-l475e-iot01a.html) and [B-L4S5I-IOT01A](https://www.st.com/en/evaluation-tools/b-l4s5i-iot01a.html).
+Driver for the esp8266-wifi adapter with AT command firmware. The adapter has a serial interface, therefore this driver can be used with any UART driver that implements the `embedded-io` traits.
 
 ## Features
 
@@ -15,5 +15,5 @@ Driver for the es-wifi adapter from Inventek. The adapter is used on boards such
 
 ## Examples
 
-See [examples/stm32l4-discovery-kit](examples/stm32l4-discovery-kit) for an example that works the B-L475E-IOT01A board.
+See [examples/linux](examples/linux) for an example that works in a Linux environment.
 

@@ -1,33 +1,156 @@
-//use drogue_nom_utils::parse_usize;
-use nom::{alt, char, complete, do_parse, error::ErrorKind, named, tag, take_until};
 use nom::{
-    character::streaming::{crlf, digit1},
+    alt, char, character::streaming::digit1, do_parse, named, opt, tag, take, take_until, tuple,
     IResult,
 };
 
-use embedded_nal_async::{IpAddr, Ipv4Addr};
-//use crate::util::nom::{parse_u8, parse_usize};
+use embedded_nal_async::Ipv4Addr;
 
-named!(
-    pub ok,
-    tag!("OK\r\n")
-);
+use super::{
+    num::{atoi_u8, atoi_usize},
+    protocol::{FirmwareInfo, IpAddresses, ResolverAddresses, Response, WifiConnectionFailure},
+    BUFFER_LEN,
+};
 
-named!(
-    pub error,
-    tag!("ERROR\r\n")
-);
-
-named!(
-    pub prompt,
-    tag!("> ")
-);
-
-#[derive(Debug)]
-pub(crate) enum JoinResponse {
-    Ok(IpAddr),
-    JoinError,
+fn parse_u8(input: &[u8]) -> IResult<&[u8], u8> {
+    let (input, digits) = digit1(input)?;
+    IResult::Ok((input, atoi_u8(digits).unwrap()))
 }
+
+fn parse_usize(input: &[u8]) -> IResult<&[u8], usize> {
+    let (input, digits) = digit1(input)?;
+    let num = atoi_usize(digits).unwrap();
+    IResult::Ok((input, num))
+}
+
+#[rustfmt::skip]
+named!(
+    crlf,
+    tag!("\r\n")
+);
+
+#[rustfmt::skip]
+named!(
+    pub ok<Response>,
+    do_parse!(
+        tuple!(
+            opt!(tag!("ATE0")),
+            opt!(crlf),
+            opt!(crlf),
+            tag!("OK"),
+            crlf
+        ) >>
+        (
+            Response::Ok
+        )
+    )
+);
+
+named!(
+    pub reason<()>,
+    do_parse!(
+        // use "!alt" once we identified an additional reason
+        link_invalid
+        >> ()
+    )
+);
+
+named!(
+    pub link_invalid<()>,
+    do_parse!(
+        tag!("link is not valid") >> ()
+    )
+);
+
+named!(
+    pub error<Response>,
+    do_parse!(
+        opt!(reason) >>
+        opt!(crlf) >>
+        opt!(crlf) >>
+        tag!("ERROR") >>
+        crlf >>
+        (
+            Response::Error
+        )
+    )
+);
+
+#[rustfmt::skip]
+named!(
+    pub wifi_connected<Response>,
+    do_parse!(
+        tuple!(
+            tag!("WIFI CONNECTED"),
+            crlf
+        ) >>
+        (
+            Response::WifiConnected
+        )
+    )
+);
+
+#[rustfmt::skip]
+named!(
+    pub wifi_disconnect<Response>,
+    do_parse!(
+        tuple!(
+            tag!("WIFI DISCONNECT"),
+            crlf
+        ) >>
+        (
+            Response::WifiDisconnect
+        )
+    )
+);
+
+#[rustfmt::skip]
+named!(
+    pub got_ip<Response>,
+    do_parse!(
+        tuple!(
+            tag!("WIFI GOT IP"),
+            crlf
+        ) >>
+        (
+            Response::GotIp
+        )
+    )
+);
+
+named!(
+    pub wifi_connection_failure<Response>,
+    do_parse!(
+        tag!("+CWJAP:") >>
+        code: parse_u8 >>
+        crlf >>
+        crlf >>
+        tag!("FAIL") >>
+        crlf >>
+        (
+            Response::WifiConnectionFailure(WifiConnectionFailure::from(code))
+        )
+    )
+);
+
+#[rustfmt::skip]
+named!(
+    pub firmware_info<Response>,
+    do_parse!(
+        tag!("AT version:") >>
+        major: parse_u8 >>
+        tag!(".") >>
+        minor: parse_u8 >>
+        tag!(".") >>
+        patch: parse_u8 >>
+        tag!(".") >>
+        build: parse_u8 >>
+        take_until!("OK") >>
+        ok >>
+        (
+            Response::FirmwareInfo(FirmwareInfo{major, minor, patch, build})
+        )
+    )
+);
 
 #[rustfmt::skip]
 named!(
@@ -46,297 +169,235 @@ named!(
     )
 );
 
-// [JOIN   ] drogue,192.168.1.174,0,0
 #[rustfmt::skip]
 named!(
-    pub(crate) join<JoinResponse>,
+    pub ip_addresses<Response>,
     do_parse!(
-        tag!("[JOIN   ] ") >>
-        _ssid: take_until!(",") >>
-        char!(',') >>
-        //ip: take_until!(",") >>
+        tag!("+CIPSTA_CUR:ip:\"") >>
         ip: ip_addr >>
-        char!(',') >>
-        tag!("0,0") >>
-        tag!("\r\n") >>
+        tag!("\"") >>
+        crlf >>
+        tag!("+CIPSTA_CUR:gateway:\"") >>
+        gateway: ip_addr >>
+        tag!("\"") >>
+        crlf >>
+        tag!("+CIPSTA_CUR:netmask:\"") >>
+        netmask: ip_addr >>
+        tag!("\"") >>
+        crlf >>
+        crlf >>
         ok >>
         (
-            //log::info!("ip --> {:?}", ip );
-            JoinResponse::Ok(IpAddr::V4(ip))
+            Response::IpAddresses(
+                IpAddresses {
+                    ip,
+                    gateway,
+                    netmask,
+                }
+            )
         )
     )
 );
 
-// [JOIN   ] drogue
-// [JOIN   ] Failed
+#[rustfmt::skip]
 named!(
-    pub(crate) join_error<JoinResponse>,
+    pub connect<Response>,
     do_parse!(
-        take_until!( "ERROR" ) >>
-        error >>
-        (
-            JoinResponse::JoinError
-        )
-    )
-);
-
-named!(
-    pub(crate) join_response<JoinResponse>,
-    do_parse!(
-        tag!("\r\n") >>
-        response:
-        alt!(
-              complete!(join)
-            | complete!(join_error)
-        ) >>
-        prompt >>
-        (
-            response
-        )
-
-    )
-);
-
-#[derive(Debug)]
-pub(crate) enum ConnectResponse {
-    Ok,
-    Error,
-}
-
-named!(
-    pub(crate) connected<ConnectResponse>,
-    do_parse!(
-        tag!("\r\n") >>
-        tag!("[TCP  RC] Connecting to ") >>
-        take_until!( "\r\n") >>
-        tag!("\r\n") >>
+        link_id: parse_u8 >>
+        tag!(",CONNECT") >>
+        crlf >>
         ok >>
-        prompt >>
         (
-            ConnectResponse::Ok
+            Response::Connect(link_id as usize)
         )
     )
 );
 
 named!(
-    pub(crate) connection_failure<ConnectResponse>,
+    pub ready_for_data<Response>,
     do_parse!(
-        take_until!( "ERROR" ) >>
-        error >>
+        tag!("> ") >>
         (
-            ConnectResponse::Error
+            Response::ReadyForData
         )
     )
 );
 
 named!(
-    pub(crate) connect_response<ConnectResponse>,
-    alt!(
-        complete!(connected)
-        | complete!(connection_failure)
-    )
-);
-
-#[derive(Debug)]
-pub(crate) enum CloseResponse {
-    Ok,
-    Error,
-}
-
-named!(
-    pub(crate) closed<CloseResponse>,
+    pub received_data_to_send<Response>,
     do_parse!(
-        tag!("\r\n") >>
-        tag!("\r\n") >>
-        ok >>
-        prompt >>
-        (
-            CloseResponse::Ok
-        )
-    )
-);
-
-named!(
-    pub(crate) close_error<CloseResponse>,
-    do_parse!(
-        tag!("\r\n") >>
-        take_until!( "ERROR" ) >>
-        error >>
-        prompt >>
-        (
-            CloseResponse::Error
-        )
-    )
-);
-
-named!(
-    pub(crate) close_response<CloseResponse>,
-    alt!(
-          complete!(closed)
-        | complete!(close_error)
-    )
-);
-
-#[derive(Debug)]
-pub(crate) enum WriteResponse {
-    Ok(usize),
-    Error,
-}
-
-named!(
-    pub(crate) write_ok<WriteResponse>,
-    do_parse!(
-        tag!("\r\n") >>
+        opt!( crlf ) >>
+        tag!("Recv ") >>
         len: parse_usize >>
-        tag!("\r\n") >>
-        ok >>
-        prompt >>
+        tag!(" bytes") >>
+        crlf >>
         (
-            WriteResponse::Ok(len)
+            Response::ReceivedDataToSend(len)
         )
     )
 );
 
 named!(
-    pub(crate) write_error<WriteResponse>,
+    pub send_ok<Response>,
     do_parse!(
-        tag!("\r\n") >>
-        tag!("-1") >>
-        tag!("\r\n") >>
-        ok >>
-        prompt >>
+        opt!( crlf ) >>
+        tag!("SEND OK") >>
+        crlf >>
         (
-            WriteResponse::Error
+            Response::SendOk
         )
     )
 );
 
 named!(
-    pub(crate) write_response<WriteResponse>,
-    alt!(
-          complete!(write_ok)
-        | complete!(write_error)
+    pub send_fail<Response>,
+    do_parse!(
+        opt!( crlf ) >>
+        tag!("SEND FAIL") >>
+        crlf >>
+        (
+            Response::SendFail
+        )
     )
 );
 
-#[derive(Debug)]
-pub enum ReadResponse<'a> {
-    Ok(&'a [u8]),
-    Err,
-}
+named!(
+    pub data_available<Response>,
+    do_parse!(
+        opt!( crlf ) >>
+        tag!( "+IPD,") >>
+        link_id: parse_usize >>
+        char!(',') >>
+        len: parse_usize >>
+        crlf >>
+        (
+            Response::DataAvailable {link_id, len }
+        )
+    )
+);
 
-pub fn parse_response<'m>(input: &'m [u8]) -> IResult<&'m [u8], ReadResponse<'m>> {
-    let (input, _) = crlf(input)?;
+named!(
+    pub closed<Response>,
+    do_parse!(
+        opt!(crlf) >>
+        link_id: parse_usize >>
+        tag!(",CLOSED") >>
+        crlf >>
+        (
+            Response::Closed(link_id)
+        )
+    )
+);
 
-    const OK: &[u8] = b"\r\nOK\r\n> ";
-    const ERROR: &[u8] = b"-1\r\nERROR\r\n> ";
+named!(
+    pub data_received<Response>,
+    do_parse!(
+        opt!(tag!("\r")) >>
+        opt!(tag!("\n")) >>
+        tag!("+CIPRECVDATA,") >>
+        len: parse_usize >>
+        char!(':') >>
+        data: take!(len) >>
+        crlf >>
+        ok >>
+        ( {
+            let mut buf = [0; BUFFER_LEN];
+            for (i, b) in data.iter().enumerate() {
+                //log::info!( "copy {} @ {}", *b as char, i);
+                buf[i] = *b;
+            }
+            //log::info!("------------> onwards {:?}", buf);
+            Response::DataReceived(buf, len)
+        } )
+    )
+);
 
-    if input.len() >= OK.len() && &input[input.len() - OK.len()..] == OK {
-        IResult::Ok((&[], ReadResponse::Ok(&input[..input.len() - OK.len()])))
-    } else if input.len() >= ERROR.len() && &input[input.len() - ERROR.len()..] == ERROR {
-        IResult::Ok((&[], ReadResponse::Err))
-    } else {
-        IResult::Err(nom::Err::Failure(nom::error::Error::new(
-            input,
-            ErrorKind::IsNot,
-        )))
-    }
-}
+named!(
+    pub dns_resolvers<Response>,
+    do_parse!(
+        tag!("+CIPDNS_CUR:") >>
+        ns1: ip_addr >> crlf >>
+        ns2: opt!(
+            do_parse!(
+                tag!("+CIPDNS_CUR:") >>
+                ns2: ip_addr >> crlf >>
+                (
+                    ns2
+                )
+            )
+        ) >>
+        ok >>
+        (
+            Response::Resolvers(
+                ResolverAddresses{
+                    resolver1: ns1,
+                    resolver2: ns2, /* ns2 is an Option */
+                }
+            )
+        )
+    )
+);
 
-pub fn parse_u8(input: &[u8]) -> IResult<&[u8], u8> {
-    let (input, digits) = digit1(input)?;
-    IResult::Ok((input, atoi_u8(digits).unwrap()))
-}
+named!(
+    pub dns_lookup<Response>,
+    do_parse!(
+        tag!("+CIPDOMAIN:") >>
+        ip_addr: ip_addr >>
+        crlf >>
+        ok >>
+        (
+            Response::IpAddress(ip_addr)
+        )
+    )
+);
 
-pub fn parse_usize(input: &[u8]) -> IResult<&[u8], usize> {
-    let (input, digits) = digit1(input)?;
-    let num = atoi_usize(digits).unwrap();
-    IResult::Ok((input, num))
-}
+named!(
+    pub dns_fail<Response>,
+    do_parse!(
+        tag!("DNS Fail") >>
+        crlf >>
+        error >>
+        (
+            Response::DnsFail
+        )
+    )
+);
 
-pub(crate) fn ascii_to_digit(character: u8) -> Option<u8> {
-    match character {
-        b'0' => Some(0),
-        b'1' => Some(1),
-        b'2' => Some(2),
-        b'3' => Some(3),
-        b'4' => Some(4),
-        b'5' => Some(5),
-        b'6' => Some(6),
-        b'7' => Some(7),
-        b'8' => Some(8),
-        b'9' => Some(9),
-        _ => None,
-    }
-}
+named!(
+    pub unlink_fail<Response>,
+    do_parse!(
+        opt!(crlf) >>
+        tag!("UNLINK") >>
+        crlf >>
+        error >>
+        (
+            Response::UnlinkFail
+        )
+    )
+);
 
-pub(crate) fn atoi_u8(digits: &[u8]) -> Option<u8> {
-    let mut num: u8 = 0;
-    let len = digits.len();
-    for (i, digit) in digits.iter().enumerate() {
-        let digit = ascii_to_digit(*digit)?;
-        let mut exp = 1;
-        for _ in 0..(len - i - 1) {
-            exp *= 10;
-        }
-        num += exp * digit;
-    }
-    Some(num)
-}
-
-pub(crate) fn atoi_usize(digits: &[u8]) -> Option<usize> {
-    let mut num: usize = 0;
-    let len = digits.len();
-    for (i, digit) in digits.iter().enumerate() {
-        let digit = ascii_to_digit(*digit)? as usize;
-        let mut exp = 1;
-        for _ in 0..(len - i - 1) {
-            exp *= 10;
-        }
-        num += exp * digit;
-    }
-    Some(num)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_response_parser_eagerness() {
-        let payload = &[
-            0x01, 0x02, 0x0d, 0x0a, 0x4f, 0x4b, 0x0d, 0x0a, 0x3e, 0x20, 0x03, 0x04,
-        ];
-        let input = &[
-            0x0d, 0x0a, 0x01, 0x02, 0x0d, 0x0a, 0x4f, 0x4b, 0x0d, 0x0a, 0x3e, 0x20, 0x03, 0x04,
-            0x0d, 0x0a, 0x4f, 0x4b, 0x0d, 0x0a, 0x3e, 0x20,
-        ];
-        let result = super::parse_response(input);
-        assert!(result.is_ok());
-        let (_, response) = result.unwrap();
-        if let super::ReadResponse::Ok(data) = response {
-            assert_eq!(data, payload);
-        } else {
-            assert!(false);
-        }
-    }
-
-    #[test]
-    fn test_response_parser_expected_error() {
-        let input = &[
-            0x0d, 0x0a, 0x2d, 0x31, 0x0d, 0x0a, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x0d, 0x0a, 0x3e,
-            0x20,
-        ];
-        let result = super::parse_response(input);
-        assert!(result.is_ok());
-        let (_, response) = result.unwrap();
-        assert!(matches!(response, super::ReadResponse::Err));
-    }
-
-    #[test]
-    fn test_response_parser_unexpected_error() {
-        let input = &[
-            0x0d, 0x0a, 0x2d, 0x31, 0x0d, 0x0a, 0x52, 0x0d, 0x0a, 0x3e, 0x20,
-        ];
-        let result = super::parse_response(input);
-        assert!(result.is_err());
-    }
-}
+named!(
+    pub parse<Response>,
+    alt!(
+          ok
+        | error
+        | firmware_info
+        | wifi_connected
+        | wifi_disconnect
+        | wifi_connection_failure
+        | got_ip
+        | ip_addresses
+        | connect
+        | closed
+        | ready_for_data
+        | received_data_to_send
+        | send_ok
+        | send_fail
+        | data_available
+        | data_received
+        | dns_resolvers
+        | dns_lookup
+        | dns_fail
+        | unlink_fail
+    )
+);
