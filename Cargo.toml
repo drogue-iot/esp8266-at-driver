@@ -1,5 +1,5 @@
 [package]
-name = "esp8266-wifi-at"
+name = "esp8266-at-driver"
 version = "0.1.0"
 edition = "2021"
 
