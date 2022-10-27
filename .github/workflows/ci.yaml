@@ -17,6 +17,3 @@ jobs:
 
       - name: Build and test
         run: cargo test
-
-      - name: Build example
-        run: cd examples/stm32l4-discovery-kit && cargo build
