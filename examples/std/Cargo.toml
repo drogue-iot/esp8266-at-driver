@@ -1,0 +1,31 @@
+[package]
+edition = "2021"
+name = "std-esp8266"
+version = "0.1.0"
+description = "Example using a USB-to-Serial adapter + ESP8266 adapter in an STD environment"
+keywords = ["std", "wifi", "networking", "cloud"]
+
+[dependencies]
+log = "0.4"
+env_logger = "0.9"
+esp8266-at-driver = { path = "../../" }
+embedded-io = { version = "0.3.0", features = ["async", "std", "futures"] }
+static_cell = "1"
+
+embassy-time = { version = "0.1.0", default-features = false, features = ["std", "nightly"] }
+embassy-executor = { version = "0.1.0", default-features = false, features = ["std", "integrated-timers", "nightly"] }
+rand = "0.8"
+cfg-if = "1.0.0"
+
+embedded-hal = "=1.0.0-alpha.9"
+embedded-hal-async = "=0.1.0-alpha.3"
+embedded-nal-async = "0.2.0"
+
+async-io = "1.6.0"
+nix = "0.22.1"
+futures = { version = "0.3.17" }
+libc = "0.2.101"
+
+[patch.crates-io]
+embassy-time = { git = "https://github.com/embassy-rs/embassy.git", tag = "embassy-time-v0.1.0" }
+embassy-executor = {git = "https://github.com/embassy-rs/embassy.git", tag = "embassy-time-v0.1.0" }

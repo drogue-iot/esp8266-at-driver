@@ -22,12 +22,15 @@ futures-intrusive = { version = "0.4", default-features = false }
 embassy-time = { version = "0.1.0", default-features = false }
 embassy-futures = { version = "0.1.0", default-features = false }
 embassy-sync = { version = "0.1.0", default-features = false, features = ["nightly"] }
+
 atomic-polyfill = "1"
 
 embedded-hal = { package = "embedded-hal", version = "1.0.0-alpha.9"}
 embedded-hal-async = { version = "0.1.0-alpha.3" }
 embedded-io = { version = "0.3.0", features = ["async"] }
 embedded-nal-async = { version = "0.2.0" }
+
+arrayvec = { version = "0.6" }
 
 [dev-dependencies]
 embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "61560e740dea1b4c7ca036dafd66c834a1ff92e2", default-features = false, features = ["integrated-timers"] }

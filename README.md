@@ -7,6 +7,8 @@
 
 Driver for the esp8266-wifi adapter with AT command firmware. The adapter has a serial interface, therefore this driver can be used with any UART driver that implements the `embedded-io` traits.
 
+The currently supported AT firmware version is 1.7.x.
+
 ## Features
 
 * Implements `embedded-nal-async` traits

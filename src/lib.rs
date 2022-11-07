@@ -1,10 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(type_alias_impl_trait)]
-#![feature(generic_associated_types)]
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
-mod fmt;
 mod buffer;
+mod fmt;
 mod num;
 mod parser;
 mod protocol;
@@ -25,25 +24,38 @@ use futures_intrusive::sync::LocalMutex;
 use heapless::spsc::Queue;
 use protocol::{Command, ConnectionType, Response as AtResponse};
 
-pub const BUFFER_LEN: usize = 512;
+pub(crate) const BUFFER_LEN: usize = 512;
 type DriverMutex = NoopRawMutex;
 
+/// Possible errors returned by the Esp8266 driver.
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DriverError {
-    NoSocket,
+    /// Error initializing driver.
     UnableToInitialize,
+    /// No socket available.
     NoAvailableSockets,
+    /// Operation timed out.
     Timeout,
+    /// Error opening socket.
     OpenError,
+    /// Error connecting to remote endpoint.
     ConnectError,
+    /// Error writing to socket.
     WriteError,
+    /// Error reading from socket.
     ReadError,
+    /// Error closing socket.
     CloseError,
+    /// Attempting to use a closed socket.
     SocketClosed,
+    /// Socket is in an invalid state.
     InvalidSocket,
+    /// Operation not supported by driver.
     OperationNotSupported,
+    /// Error associating with an access point.
     UnableToAssociate,
+    /// Unknown error.
     Unknown,
 }
 
@@ -177,7 +189,7 @@ where
     }
 }
 
-pub struct Esp8266Handle<T>
+struct Esp8266Handle<T>
 where
     T: Read + Write,
 {
@@ -388,7 +400,10 @@ where
     }
 }
 
-pub struct Esp8266Modem<'a, T, ENABLE, RESET, const MAX_SOCKETS: usize>
+/// Instance of the Esp8266 driver.
+///
+/// Configure MAX_SOCKETS to the max number of connections you expect to be making at the same time.
+pub struct Esp8266Driver<'a, T, ENABLE, RESET, const MAX_SOCKETS: usize>
 where
     T: Read + Write,
     ENABLE: OutputPin,
@@ -403,12 +418,18 @@ where
     _a: PhantomData<&'a T>,
 }
 
-impl<'a, T, ENABLE, RESET, const MAX_SOCKETS: usize> Esp8266Modem<'a, T, ENABLE, RESET, MAX_SOCKETS>
+impl<'a, T, ENABLE, RESET, const MAX_SOCKETS: usize>
+    Esp8266Driver<'a, T, ENABLE, RESET, MAX_SOCKETS>
 where
     T: Read + Write,
     ENABLE: OutputPin,
     RESET: OutputPin,
 {
+    /// Create a new instance of the Esp8266 driver using the provided transport. The transport is usually the UART peripheral
+    /// when used on a microcontroller.
+    ///
+    /// The ENABLE pin is used to enable the adapter.
+    /// The RESET pin is used to reset the adapter.
     pub fn new(transport: T, enable: ENABLE, reset: RESET) -> Self {
         const C: Channel<DriverMutex, AtResponse, 2> = Channel::new();
         const UNUSED: AtomicBool = AtomicBool::new(false);
@@ -473,7 +494,7 @@ where
         }
     }
 
-    pub fn new_socket(&'a self) -> Result<Esp8266Socket<'a, T>, DriverError> {
+    fn new_socket(&'a self) -> Result<Esp8266Socket<'a, T>, DriverError> {
         for id in 0..MAX_SOCKETS {
             if self.sockets[id].swap(true, Ordering::SeqCst) == false {
                 debug!("[{}] client created", id);
@@ -490,14 +511,15 @@ where
                 });
             }
         }
-        Err(DriverError::NoSocket)
+        Err(DriverError::NoAvailableSockets)
     }
 
+    /// Run the driver task using the specified WiFi AP settings.
+    ///
+    /// The adapter will be initialized/reset, and the driver will attempt to join the network.
     pub async fn run(&'a self, ssid: &'a str, psk: &'a str) -> Result<(), DriverError> {
         self.initialize().await?;
-        self.handle
-            .join_wep(ssid, psk, &self.notifications)
-            .await?;
+        self.handle.join_wep(ssid, psk, &self.notifications).await?;
         loop {
             let t = Timer::after(Duration::from_secs(1));
             match select3(
@@ -529,7 +551,7 @@ enum Control {
     Close(usize),
 }
 
-pub trait SocketsNotifier {
+pub(crate) trait SocketsNotifier {
     fn notify(&self, link_id: usize, response: AtResponse);
 }
 
@@ -545,6 +567,8 @@ impl<const MAX_SOCKETS: usize> SocketsNotifier
     }
 }
 
+/// A handle for a connection using the Esp8266 driver. The socket is closed when
+/// the instance is drop'ed.
 pub struct Esp8266Socket<'a, T>
 where
     T: Read + Write,
@@ -590,7 +614,7 @@ impl embedded_io::Error for DriverError {
 }
 
 impl<'a, T, ENABLE, RESET, const MAX_SOCKETS: usize> embedded_nal_async::TcpConnect
-    for Esp8266Modem<'a, T, ENABLE, RESET, MAX_SOCKETS>
+    for Esp8266Driver<'a, T, ENABLE, RESET, MAX_SOCKETS>
 where
     T: Read + Write,
     ENABLE: OutputPin,

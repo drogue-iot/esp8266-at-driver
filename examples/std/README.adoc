@@ -1,0 +1,69 @@
+== std esp8266 example
+
+This example demonstrates using a driver written for embedded on a standard computer with a module attached to a USB-to-Serial cable.
+
+The application runs out of the box on a PC with a ESP8266 breakout module flashed with AT firmware attached using a USB-to-Serial cable.
+
+=== Prerequisites
+
+==== Hardware
+
+* USB to Serial cable
+* ESP8266 module with AT-command firmware version 1.7.x or newer.
+
+==== Software
+
+* To build the example, you need to have link:https://rustup.rs/[rustup].
+* A TCP server (ncat) or a service like Drogue IoT Cloud. See link:https://github.com/drogue-iot/drogue-cloud/[drogue-cloud] for how to run that, or use the link:https://sandbox.drogue.cloud/[sandbox] (requires TLS).
+
+=== Configuring
+
+Credentials for your local WiFi network will come from these entries in `~/.drogue/config.toml`:
+
+....
+wifi-ssid = "..."
+wifi-password = "..."
+....
+
+HTTP authentication will come from these entries in `~/.drogue/config.toml`:
+
+....
+http-username = "..."
+http-password = "..."
+....
+
+For Drogue IoT Cloud, the username/password is stored in this form: `device_id@application`.
+
+=== Running with plain TCP
+
+You can configure the IP constant to point to any HTTP server to receive events, or you can use link:https://github.com/drogue-iot/drogue-cloud/[drogue cloud] locally. For simplicity, start a local HTTP server in python that echoes the HTTP payload back:
+
+....
+curl -s https://raw.githubusercontent.com/drogue-iot/drogue-device/main/apps/wifi/server.py | python3 
+....
+
+To run the firmware:
+
+....
+cargo run --release
+....
+
+
+The application will wait until the ESP8266 is reset, some breakout modules provide a reset button, others require you to power the ESP8266 separately from the serial cable in order to proberly reset.
+
+Once reset, the application will connect to the WiFi access point and send a test message from your device.
+
+== Running with TLS
+
+When the `tls` flag is enabled, the example is configured to use the Drogue IoT Cloud sandbox. To use this example with your own Drogue IoT Cloud instance, you need to edit the HOST and PORT constants in `src/main.rs`. 
+
+To run the firmware:
+
+....
+cargo +nightly run --release --features tls
+....
+
+
+The application will wait until the ESP8266 is reset, some breakout modules provide a reset button, others require you to power the ESP8266 separately from the serial cable in order to proberly reset.
+
+Once reset, the application will connect to the WiFi access point and send a test message from your device.

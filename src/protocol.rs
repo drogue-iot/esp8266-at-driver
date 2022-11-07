@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::BUFFER_LEN;
 use core::{
     fmt,
@@ -7,9 +8,10 @@ use embedded_nal_async::{IpAddr, Ipv4Addr, SocketAddr};
 use heapless::String;
 
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct ResolverAddresses {
-    pub resolver1: Ipv4Addr,
-    pub resolver2: Option<Ipv4Addr>,
+    pub(crate) resolver1: Ipv4Addr,
+    pub(crate) resolver2: Option<Ipv4Addr>,
 }
 
 #[cfg(feature = "defmt")]
@@ -27,7 +29,7 @@ impl defmt::Format for ResolverAddresses {
 /// Type of socket connection.
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum ConnectionType {
+pub(crate) enum ConnectionType {
     TCP,
     UDP,
 }
@@ -35,7 +37,7 @@ pub enum ConnectionType {
 /// Mode of the Wi-Fi stack
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum WiFiMode {
+pub(crate) enum WiFiMode {
     /// Station mode, aka client
     Station,
     /// Access point mode
@@ -46,7 +48,7 @@ pub enum WiFiMode {
 
 /// Commands to be sent to the ESP board.
 #[derive(Debug)]
-pub enum Command<'a> {
+pub(crate) enum Command<'a> {
     QueryFirmwareInfo,
     SetMode(WiFiMode),
     JoinAp { ssid: &'a str, password: &'a str },
@@ -68,7 +70,7 @@ impl<'a> defmt::Format for Command<'a> {
 }
 
 impl<'a> Command<'a> {
-    pub fn as_bytes(&self) -> String<256> {
+    pub(crate) fn as_bytes(&self) -> String<256> {
         match self {
             Command::QueryFirmwareInfo => String::from("AT+GMR"),
             Command::QueryIpAddress => String::from("AT+CIPSTA_CUR?"),
@@ -140,6 +142,7 @@ impl<'a> Command<'a> {
 
 /// Responses (including unsolicited) which may be parsed from the board.
 #[allow(clippy::large_enum_variant)]
+#[doc(hidden)]
 pub enum Response {
     None,
     Ok,
@@ -240,10 +243,11 @@ impl Debug for Response {
 
 /// IP addresses for the board, including its own address, netmask and gateway.
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct IpAddresses {
-    pub ip: Ipv4Addr,
-    pub gateway: Ipv4Addr,
-    pub netmask: Ipv4Addr,
+    pub(crate) ip: Ipv4Addr,
+    pub(crate) gateway: Ipv4Addr,
+    pub(crate) netmask: Ipv4Addr,
 }
 
 #[cfg(feature = "defmt")]
@@ -262,16 +266,18 @@ impl defmt::Format for IpAddresses {
 /// Version information for the ESP board.
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[doc(hidden)]
 pub struct FirmwareInfo {
-    pub major: u8,
-    pub minor: u8,
-    pub patch: u8,
-    pub build: u8,
+    pub(crate) major: u8,
+    pub(crate) minor: u8,
+    pub(crate) patch: u8,
+    pub(crate) build: u8,
 }
 
 /// Reasons for Wifi access-point join failures.
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[doc(hidden)]
 pub enum WifiConnectionFailure {
     Timeout,
     WrongPassword,

@@ -17,3 +17,6 @@ jobs:
 
       - name: Build and test
         run: cargo test
+
+      - name: Build example
+        run: cd examples/std && cargo build
