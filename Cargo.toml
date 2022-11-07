@@ -1,6 +1,6 @@
 [package]
 name = "esp8266-at-driver"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -9,9 +9,6 @@ repository = "https://github.com/drogue-iot/esp8266-at-driver"
 categories = [
     "embedded",
     "no-std",
-    "wifi",
-    "es-wifi",
-    "iot",
 ]
 
 [dependencies]
