@@ -2,7 +2,7 @@
 edition = "2021"
 name = "std-esp8266"
 version = "0.1.0"
-description = "Example using a USB-to-Serial adapter + ESP8266 adapter in an STD environment"
+description = "Example using a USB-to-Serial adapter + ESP8266 adapter in a STD environment"
 keywords = ["std", "wifi", "networking", "cloud"]
 
 [dependencies]

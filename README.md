@@ -17,5 +17,5 @@ The currently supported AT firmware version is 1.7.x.
 
 ## Examples
 
-See [examples/linux](examples/linux) for an example that works in a Linux environment.
+See [examples/std](examples/std) for an example that works in a STD environment.
 
