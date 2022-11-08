@@ -1,6 +1,6 @@
 [package]
 name = "esp8266-at-driver"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -27,7 +27,7 @@ embedded-hal-async = { version = "0.1.0-alpha.3" }
 embedded-io = { version = "0.3.0", features = ["async"] }
 embedded-nal-async = { version = "0.2.0" }
 
-arrayvec = { version = "0.6" }
+arrayvec = { version = "0.6", default-features = false }
 
 [dev-dependencies]
 embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "61560e740dea1b4c7ca036dafd66c834a1ff92e2", default-features = false, features = ["integrated-timers"] }
