@@ -3,17 +3,21 @@
 
 mod serial;
 
-use async_io::Async;
-use embassy_time::{Duration, Timer};
-use embedded_hal::digital::{ErrorType, OutputPin};
-use embedded_io::adapters::FromFutures;
-use embedded_io::asynch::{Read, Write};
-use embedded_nal_async::TcpConnect;
-use esp8266_at_driver::*;
-use futures::io::BufReader;
-use nix::sys::termios;
-use serial::*;
-use static_cell::StaticCell;
+use {
+    async_io::Async,
+    embassy_time::{Duration, Timer},
+    embedded_hal::digital::{ErrorType, OutputPin},
+    embedded_io::{
+        adapters::FromFutures,
+        asynch::{Read, Write},
+    },
+    embedded_nal_async::TcpConnect,
+    esp8266_at_driver::*,
+    futures::io::BufReader,
+    nix::sys::termios,
+    serial::*,
+    static_cell::StaticCell,
+};
 
 type SERIAL = FromFutures<BufReader<Async<SerialPort>>>;
 type ENABLE = DummyPin;
