@@ -1,6 +1,6 @@
 [package]
 name = "esp8266-at-driver"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 readme = "README.md"
@@ -23,14 +23,14 @@ embassy-sync = { version = "0.1.0", default-features = false, features = ["night
 atomic-polyfill = "1"
 
 embedded-hal = { package = "embedded-hal", version = "1.0.0-alpha.9"}
-embedded-hal-async = { version = "0.1.0-alpha.3" }
-embedded-io = { version = "0.3.0", features = ["async"] }
-embedded-nal-async = { version = "0.2.0" }
+embedded-hal-async = { version = "0.2.0-alpha.0" }
+embedded-io = { version = "0.4.0", features = ["async"] }
+embedded-nal-async = { version = "0.3.0" }
 
 arrayvec = { version = "0.6", default-features = false }
 
 [dev-dependencies]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "61560e740dea1b4c7ca036dafd66c834a1ff92e2", default-features = false, features = ["integrated-timers"] }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "645fb66a5122bdc8180e0e65d076ca103431a426", default-features = false, features = ["integrated-timers"] }
 
 [features]
 std = ["embassy-time/std"]

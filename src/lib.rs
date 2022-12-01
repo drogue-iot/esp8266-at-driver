@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait)]
+#![feature(impl_trait_projections)]
+#![allow(incomplete_features)]
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 mod buffer;
@@ -8,21 +10,23 @@ mod num;
 mod parser;
 mod protocol;
 
-use atomic_polyfill::{AtomicBool, Ordering};
-use buffer::Buffer;
-use core::{cell::RefCell, future::Future, marker::PhantomData};
-use embassy_futures::select::{select3, Either3};
-use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
-    channel::{Channel, DynamicReceiver, DynamicSender},
+use {
+    atomic_polyfill::{AtomicBool, Ordering},
+    buffer::Buffer,
+    core::{cell::RefCell, marker::PhantomData},
+    embassy_futures::select::{select3, Either3},
+    embassy_sync::{
+        blocking_mutex::raw::NoopRawMutex,
+        channel::{Channel, DynamicReceiver, DynamicSender},
+    },
+    embassy_time::{Duration, Timer},
+    embedded_hal::digital::OutputPin,
+    embedded_io::asynch::{Read, Write},
+    embedded_nal_async::*,
+    futures_intrusive::sync::LocalMutex,
+    heapless::spsc::Queue,
+    protocol::{Command, ConnectionType, Response as AtResponse},
 };
-use embassy_time::{Duration, Timer};
-use embedded_hal::digital::OutputPin;
-use embedded_io::asynch::{Read, Write};
-use embedded_nal_async::*;
-use futures_intrusive::sync::LocalMutex;
-use heapless::spsc::Queue;
-use protocol::{Command, ConnectionType, Response as AtResponse};
 
 pub(crate) const BUFFER_LEN: usize = 512;
 type DriverMutex = NoopRawMutex;
@@ -622,20 +626,18 @@ where
 {
     type Error = DriverError;
     type Connection<'m> = Esp8266Socket<'m, T> where Self: 'm;
-    type ConnectFuture<'m> = impl Future<Output = Result<Self::Connection<'m>, Self::Error>> + 'm
-	where
-		Self: 'm;
-    fn connect<'m>(&'m self, remote: SocketAddr) -> Self::ConnectFuture<'m> {
-        async move {
-            let mut socket = self.new_socket()?;
-            socket.process_notifications();
-            socket
-                .handle
-                .connect_client(socket.id, remote, socket.notifier)
-                .await?;
-            socket.state = SocketState::Connected;
-            Ok(socket)
-        }
+    async fn connect<'m>(&'m self, remote: SocketAddr) -> Result<Self::Connection<'m>, Self::Error>
+    where
+        Self: 'm,
+    {
+        let mut socket = self.new_socket()?;
+        socket.process_notifications();
+        socket
+            .handle
+            .connect_client(socket.id, remote, socket.notifier)
+            .await?;
+        socket.state = SocketState::Connected;
+        Ok(socket)
     }
 }
 
@@ -726,40 +728,27 @@ impl<'a, T> embedded_io::asynch::Write for Esp8266Socket<'a, T>
 where
     T: Read + Write + 'a,
 {
-    type WriteFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm
-    where
-        Self: 'm;
-
     /// Write a buffer into this writer, returning how many bytes were written.
-    fn write<'m>(&'m mut self, buf: &'m [u8]) -> Self::WriteFuture<'m> {
-        async move {
-            self.process_notifications();
-            if self.is_closed() {
-                return Err(DriverError::SocketClosed);
-            }
-
-            let mut written = self.buffer.write(buf);
-            while written < buf.len() {
-                self.flush().await?;
-                written += self.buffer.write(&buf[written..]);
-            }
-            Ok(written)
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.process_notifications();
+        if self.is_closed() {
+            return Err(DriverError::SocketClosed);
         }
+
+        let mut written = self.buffer.write(buf);
+        while written < buf.len() {
+            self.flush().await?;
+            written += self.buffer.write(&buf[written..]);
+        }
+        Ok(written)
     }
 
-    /// Future returned by `flush`.
-    type FlushFuture<'m> = impl Future<Output = Result<(), Self::Error>> + 'm
-    where
-        Self: 'm;
-
     /// Flush this output stream, ensuring that all intermediately buffered contents reach their destination.
-    fn flush<'m>(&'m mut self) -> Self::FlushFuture<'m> {
-        async move {
-            let written = self.buffer.slice();
-            let written = self.handle.send(self.id, written, self.notifier).await?;
-            self.buffer.reduce(written);
-            Ok(())
-        }
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        let written = self.buffer.slice();
+        let written = self.handle.send(self.id, written, self.notifier).await?;
+        self.buffer.reduce(written);
+        Ok(())
     }
 }
 
@@ -767,28 +756,22 @@ impl<'a, T> embedded_io::asynch::Read for Esp8266Socket<'a, T>
 where
     T: Read + Write + 'a,
 {
-    type ReadFuture<'m> = impl Future<Output = Result<usize, Self::Error>> + 'm
-    where
-        Self: 'm;
-
     /// Pull some bytes from this source into the specified buffer, returning how many bytes were read.
-    fn read<'m>(&'m mut self, buf: &'m mut [u8]) -> Self::ReadFuture<'m> {
-        async move {
-            self.wait_available().await?;
-            self.process_notifications();
-            if self.is_closed() {
-                return Err(DriverError::SocketClosed);
-            }
-            // Read available data
-            let to_read = core::cmp::min(buf.len(), self.available);
-            debug!("[{}] receiving {} bytes", self.id, to_read);
-            let r = self
-                .handle
-                .receive(self.id, &mut buf[..to_read], self.notifier)
-                .await?;
-            self.available -= r;
-            Ok(r)
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.wait_available().await?;
+        self.process_notifications();
+        if self.is_closed() {
+            return Err(DriverError::SocketClosed);
         }
+        // Read available data
+        let to_read = core::cmp::min(buf.len(), self.available);
+        debug!("[{}] receiving {} bytes", self.id, to_read);
+        let r = self
+            .handle
+            .receive(self.id, &mut buf[..to_read], self.notifier)
+            .await?;
+        self.available -= r;
+        Ok(r)
     }
 }
 

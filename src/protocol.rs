@@ -1,11 +1,13 @@
 #![allow(dead_code)]
-use super::BUFFER_LEN;
-use core::{
-    fmt,
-    fmt::{Debug, Write},
+use {
+    super::BUFFER_LEN,
+    core::{
+        fmt,
+        fmt::{Debug, Write},
+    },
+    embedded_nal_async::{IpAddr, Ipv4Addr, SocketAddr},
+    heapless::String,
 };
-use embedded_nal_async::{IpAddr, Ipv4Addr, SocketAddr};
-use heapless::String;
 
 #[derive(Debug)]
 #[doc(hidden)]
@@ -328,9 +330,7 @@ fn dump_data(name: &str, data: &[u8], len: usize, f: &mut fmt::Formatter<'_>) ->
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use arrayvec::ArrayString;
-    use core::fmt::Write;
+    use {super::*, arrayvec::ArrayString, core::fmt::Write};
 
     #[test]
     fn test_debug_no_value() {

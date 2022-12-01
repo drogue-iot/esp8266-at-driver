@@ -1,6 +1,8 @@
-use super::{parser, protocol::Response};
-use core::str::from_utf8;
-use moveslice::Moveslice;
+use {
+    super::{parser, protocol::Response},
+    core::str::from_utf8,
+    moveslice::Moveslice,
+};
 
 pub(crate) struct Buffer {
     buffer: [u8; 1024],
