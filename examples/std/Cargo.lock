@@ -339,9 +339,9 @@ dependencies = [
 
 [[package]]
 name = "embedded-nal-async"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dc8f5d837a6e95e9ecad9b5503fff6ef12e16407706abed1d33fc61eaf90da8"
+checksum = "27ce84f518ca912777ec143db235f4d615e3bf8d4e46d507d6ef12daf5b1df98"
 dependencies = [
  "embedded-io 0.4.0",
  "embedded-nal",
@@ -364,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "esp8266-at-driver"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arrayvec",
  "atomic-polyfill 1.0.1",
